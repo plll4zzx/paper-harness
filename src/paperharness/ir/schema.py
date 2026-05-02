@@ -90,6 +90,12 @@ class ExpectedSpec(BaseModel):
     unit: str | None = None
 
 
+class EvidenceSpec(BaseModel):
+    kind: str = "heuristic"
+    message: str
+    source_path: str | None = None
+
+
 class ExperimentSpec(BaseModel):
     id: str
     paper_result_id: str | None = None
@@ -107,7 +113,7 @@ class ExperimentSpec(BaseModel):
     symbol_mappings: dict[str, str | None] = Field(default_factory=dict)
     unmatched_paper_symbols: list[str] = Field(default_factory=list)
     unmatched_code_symbols: list[str] = Field(default_factory=list)
-    evidence: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceSpec] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
 
 

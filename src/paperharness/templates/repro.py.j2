@@ -94,7 +94,8 @@ def prepare_data(args):
         if command:
             run_command(exp["id"], "data", command)
         else:
-            mark_status(exp["id"], "blocked", "data preparation command missing")
+            print(f"warning: {exp['id']} has no data preparation command; status is data_unknown")
+            mark_status(exp["id"], "data_unknown", "data preparation command missing")
 
 
 def run(args):
@@ -176,6 +177,13 @@ def report(args):
         lines.extend(["", "Risks:", ""])
         for risk in exp.get("risks") or ["none recorded"]:
             lines.append(f"- {risk}")
+        lines.extend(["", "Evidence:", ""])
+        for item in exp.get("evidence") or []:
+            if isinstance(item, dict):
+                source = f" Source: `{item.get('source_path')}`." if item.get("source_path") else ""
+                lines.append(f"- {item.get('message')}{source}")
+            else:
+                lines.append(f"- {item}")
         lines.append("")
     lines.extend(["## Missing Information", ""])
     for item in kit.get("missing_info") or ["none recorded"]:

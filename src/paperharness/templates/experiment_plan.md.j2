@@ -41,6 +41,12 @@ Run only commands explicitly listed in this kit. When paper symbols and code var
 - Evaluation command: {{ exp.evaluate.command or "missing" }}
 - Unmatched paper symbols: {{ exp.unmatched_paper_symbols | join(", ") if exp.unmatched_paper_symbols else "none" }}
 - Risks: {{ exp.risks | join("; ") if exp.risks else "none recorded" }}
+- Evidence:
+{% for item in exp.evidence %}
+  - {{ item.message }}{% if item.source_path %} Source: `{{ item.source_path }}`.{% endif %}
+{% else %}
+  - none recorded
+{% endfor %}
 
 {% endfor %}
 ## Recommended Execution Order

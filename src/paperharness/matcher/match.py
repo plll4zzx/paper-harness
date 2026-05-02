@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from paperharness.ir.schema import CommandSpec, DatasetSpec, ExperimentSpec, PaperFacts, RepoFacts
+from paperharness.ir.schema import CommandSpec, DatasetSpec, EvidenceSpec, ExperimentSpec, PaperFacts, RepoFacts
 
 
 def build_experiments(paper: PaperFacts, repo: RepoFacts) -> tuple[list[ExperimentSpec], list[DatasetSpec], list[str]]:
@@ -58,33 +58,53 @@ def build_experiments(paper: PaperFacts, repo: RepoFacts) -> tuple[list[Experime
     return experiments, datasets, sorted(set(missing))
 
 
-def _score(dataset: str | None, metric: str | None, repo: RepoFacts) -> tuple[float, list[str], list[str]]:
+def _score(dataset: str | None, metric: str | None, repo: RepoFacts) -> tuple[float, list[EvidenceSpec], list[str]]:
     score = 0.0
-    evidence: list[str] = []
+    evidence: list[EvidenceSpec] = []
     risks: list[str] = []
     haystack = "\n".join(repo.command_candidates + repo.config_files + repo.readme_commands).lower()
     if dataset and _norm(dataset) in _norm(haystack):
         score += 0.25
-        evidence.append(f"Dataset name appears in repository commands or config paths: {dataset}.")
+        evidence.append(
+            EvidenceSpec(
+                kind="dataset_overlap",
+                message=f"Dataset name appears in repository commands or config paths: {dataset}.",
+                source_path=_first_source_for_term(dataset, repo),
+            )
+        )
     elif dataset:
         risks.append(f"Dataset name was not detected in repository commands or config paths: {dataset}.")
     if metric and metric.lower() in haystack:
         score += 0.2
-        evidence.append(f"Metric appears near repository instructions: {metric}.")
+        evidence.append(
+            EvidenceSpec(
+                kind="metric_overlap",
+                message=f"Metric appears near repository instructions: {metric}.",
+                source_path=_first_source_for_term(metric, repo),
+            )
+        )
     elif metric:
         risks.append(f"Metric was not detected in repository instructions: {metric}.")
     if repo.entrypoints.get("train"):
         score += 0.15
-        evidence.append("Training entrypoint detected.")
+        evidence.append(
+            EvidenceSpec(kind="entrypoint", message="Training entrypoint detected.", source_path=_script_source(repo.entrypoints["train"][0]))
+        )
     if repo.entrypoints.get("evaluate"):
         score += 0.15
-        evidence.append("Evaluation entrypoint detected.")
+        evidence.append(
+            EvidenceSpec(
+                kind="entrypoint",
+                message="Evaluation entrypoint detected.",
+                source_path=_script_source(repo.entrypoints["evaluate"][0]),
+            )
+        )
     if repo.config_files:
         score += 0.1
-        evidence.append("Config files detected.")
+        evidence.append(EvidenceSpec(kind="config", message="Config files detected.", source_path=repo.config_files[0]))
     if repo.readme_commands:
         score += 0.1
-        evidence.append("README command candidates detected.")
+        evidence.append(EvidenceSpec(kind="readme_command", message="README command candidates detected.", source_path="README.md"))
     return min(score, 1.0), evidence, risks
 
 
@@ -135,6 +155,24 @@ def _implementation_status(run_command: str | None, eval_command: str | None, sc
     if not eval_command or score < 0.5:
         return "partial_candidate"
     return "complete_candidate"
+
+
+def _first_source_for_term(term: str, repo: RepoFacts) -> str | None:
+    norm_term = _norm(term)
+    for config in repo.config_files:
+        if norm_term in _norm(config):
+            return config
+    for command in repo.readme_commands:
+        if norm_term in _norm(command):
+            return "README.md"
+    return None
+
+
+def _script_source(command: str) -> str | None:
+    for token in command.split():
+        if token.endswith(".py") or token.endswith(".sh"):
+            return token
+    return None
 
 
 def _slug(value: str) -> str:

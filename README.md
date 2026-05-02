@@ -98,6 +98,8 @@ PYTHONPATH=src python -m paperharness.cli --help
 
 ## Quickstart
 
+The MVP supports local repository paths. GitHub URLs are not accepted directly by `--repo` yet; clone the repository first, then pass the local path.
+
 Generate a reproduce kit:
 
 ```bash
@@ -202,4 +204,4 @@ The MVP mostly targets Level 0 and Level 1, with smoke-test support for moving t
 
 This is an early MVP. It supports local paper text/markdown/PDF input, local Python research repositories, heuristic command detection, heuristic paper result extraction, conservative experiment matching, and generated Codex-style reproduce kits.
 
-Remote GitHub cloning and deeper semantic paper/code alignment are planned next.
+Remote GitHub URLs are not directly supported by `--repo` in the current MVP. Use `git clone <url>` first, then pass the local checkout path. Deeper semantic paper/code alignment is planned next.

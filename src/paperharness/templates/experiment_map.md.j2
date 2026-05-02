@@ -21,7 +21,7 @@
 ### Evidence
 
 {% for item in exp.evidence %}
-- {{ item }}
+- {{ item.message }}{% if item.source_path %} Source: `{{ item.source_path }}`.{% endif %}
 {% else %}
 - No positive evidence recorded.
 {% endfor %}
