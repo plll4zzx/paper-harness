@@ -1,12 +1,11 @@
 
 
-<p align="center">
-  <img src="pic/logo.png" width="128" alt="PaperHarness logo">
-</p>
-
-<h1 align="center">PaperHarness</h1>
-
-<img src="pic/hero.png" alt="PaperHarness hero image">
+<div align="center">
+    <h1 align="center">
+    <img src="pic/logo.png" alt="PaperHarness logo" width="30"/>&nbsp;
+    PaperHarness
+    </h1>
+</div>
 
 <p align="center">
   <strong>
@@ -19,6 +18,7 @@
   </strong>
 </p>
 
+<img src="pic/hero.png" alt="PaperHarness hero image">
 
 [![CI](https://github.com/plll4zzx/paper-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/plll4zzx/paper-harness/actions/workflows/ci.yml)
 
