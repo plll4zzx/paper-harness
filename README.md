@@ -372,57 +372,6 @@ PaperHarness uses explicit reproducibility levels:
 
 The MVP mostly targets Level 0 and Level 1, with smoke-test support for moving toward Level 2.
 
-## Current Status
-
-PaperHarness is currently a runnable MVP.
-
-Current CI verifies:
-
-* editable install
-* tests
-* CLI help
-* example kit generation
-* kit validation
-* generated `repro.py inspect`
-* generated `repro.py list`
-* generated `repro.py validate`
-* generated `repro.py report`
-
-The MVP supports:
-
-* local paper text, markdown, and PDF input
-* local Python research repositories
-* heuristic command detection
-* heuristic paper result extraction
-* conservative experiment matching
-* generated Codex-style reproduce kits
-* generated CLI validation
-* conservative smoke tests
-* structured review items
-
-Remote GitHub URLs are not directly supported by `--repo` yet.
-
-Use:
-
-```bash
-git clone <repo-url>
-```
-
-then pass the local checkout path to `--repo`.
-
-## Roadmap
-
-Planned next:
-
-* remote GitHub URL cloning
-* stronger command matching
-* structured evidence sources for experiment mappings
-* better paper table and figure extraction
-* improved repo utility discovery
-* optional LLM-assisted paper/code alignment
-* Codex, OpenClaw, Claude Code, and OpenCode export profiles
-* richer reproducibility reports
-
 ## Design Philosophy
 
 PaperHarness focuses on the preparation layer of paper reproduction.
@@ -438,6 +387,3 @@ Instead, it makes uncertainty explicit.
 Missing datasets, unclear checkpoints, unmatched paper symbols, ambiguous configs, partial implementations, and unsafe assumptions are surfaced as missing information or review items.
 
 That makes paper reproduction workflows more systematic, auditable, and efficient for both humans and agents.
-
-
-
