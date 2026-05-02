@@ -1,0 +1,36 @@
+# Experiment Map
+
+{% for exp in kit.experiments %}
+## {{ exp.id }}
+
+- Paper result: {{ exp.paper_result_id }}
+- Status: {{ exp.status }}
+- Implementation status: {{ exp.implementation_status }}
+- Confidence: {{ exp.confidence }}
+- Run command: `{{ exp.run.command or "missing" }}`
+- Evaluate command: `{{ exp.evaluate.command or "missing" }}`
+
+### Symbol Mappings
+
+{% for paper_symbol, code_symbol in exp.symbol_mappings.items() %}
+- `{{ paper_symbol }}` -> `{{ code_symbol or "unmatched" }}`
+{% else %}
+- No symbols detected.
+{% endfor %}
+
+### Evidence
+
+{% for item in exp.evidence %}
+- {{ item }}
+{% else %}
+- No positive evidence recorded.
+{% endfor %}
+
+### Risks
+
+{% for item in exp.risks %}
+- {{ item }}
+{% else %}
+- No risks recorded.
+{% endfor %}
+{% endfor %}

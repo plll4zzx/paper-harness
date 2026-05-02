@@ -1,0 +1,71 @@
+# Reproducibility Report
+
+## Summary
+
+- Project: {{ kit.project.name }}
+- Paper: {{ kit.paper.title }}
+- Repository: {{ kit.project.repo_path or kit.project.repo_url }}
+- Commit: {{ kit.project.repo_commit or "unknown" }}
+- Reproduction status: not run
+- Reproducibility level: Level 1 - Mapped
+
+## Environment
+
+- OS:
+- Python:
+- CUDA:
+- GPU:
+- CPU:
+- RAM:
+- Package manager:
+- Dependency files: {{ kit.repo.environment.files }}
+
+## Commands Run
+
+```bash
+# commands go here
+```
+
+## Dataset Preparation
+
+- Dataset:
+- Source:
+- Version:
+- Preprocessing:
+- Missing data issues:
+
+## Experiments
+
+| Experiment | Paper target | Actual result | Status | Confidence | Implementation |
+| --- | --- | --- | --- | --- | --- |
+{% for exp in kit.experiments %}
+| {{ exp.id }} | {{ exp.expected.value }} {{ exp.expected.unit or "" }} | pending | {{ exp.status }} | {{ exp.confidence }} | {{ exp.implementation_status }} |
+{% endfor %}
+
+## Symbol and Variable Mapping
+
+{% for exp in kit.experiments %}
+### {{ exp.id }}
+
+{% for paper_symbol, code_symbol in exp.symbol_mappings.items() %}
+- `{{ paper_symbol }}` -> `{{ code_symbol or "unmatched" }}`
+{% else %}
+- No symbol candidates detected.
+{% endfor %}
+
+{% if exp.unmatched_paper_symbols %}
+Unmatched paper symbols: {{ exp.unmatched_paper_symbols | join(", ") }}
+{% endif %}
+{% endfor %}
+
+## Missing Information
+
+{% for item in kit.missing_info %}
+- {{ item }}
+{% else %}
+- None recorded.
+{% endfor %}
+
+## Failure Modes
+
+## Conclusion

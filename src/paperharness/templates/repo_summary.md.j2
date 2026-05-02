@@ -1,0 +1,23 @@
+# Repository Summary
+
+- Language: {{ kit.repo.language }}
+- Framework candidates: {{ kit.repo.framework_candidates | join(", ") if kit.repo.framework_candidates else "unknown" }}
+- Install commands: {{ kit.repo.environment.install_commands | join("; ") if kit.repo.environment.install_commands else "none detected" }}
+- Config files: {{ kit.repo.config_files | join(", ") if kit.repo.config_files else "none detected" }}
+- Code symbols: {{ kit.repo.code_symbols | join(", ") if kit.repo.code_symbols else "none detected" }}
+
+## Command Candidates
+
+{% for command in kit.repo.command_candidates %}
+- `{{ command }}`
+{% else %}
+- No command candidates detected.
+{% endfor %}
+
+## Partial Implementation Notes
+
+{% for note in kit.repo.partial_implementation_notes %}
+- {{ note }}
+{% else %}
+- None detected.
+{% endfor %}

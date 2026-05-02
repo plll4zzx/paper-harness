@@ -1,0 +1,67 @@
+# Experiment Plan
+
+## Project
+
+- Project: {{ kit.project.name }}
+- Paper: {{ kit.project.paper_path }}
+- Repository: {{ kit.project.repo_path or kit.project.repo_url }}
+
+## Paper Summary
+
+- Title: {{ kit.paper.title }}
+- Datasets: {{ kit.paper.datasets | join(", ") if kit.paper.datasets else "unknown" }}
+- Metrics: {{ kit.paper.metrics | join(", ") if kit.paper.metrics else "unknown" }}
+- Paper symbols: {{ kit.paper.symbols | join(", ") if kit.paper.symbols else "none detected" }}
+
+## Repository Summary
+
+- Language: {{ kit.repo.language }}
+- Framework candidates: {{ kit.repo.framework_candidates | join(", ") if kit.repo.framework_candidates else "unknown" }}
+- Config files: {{ kit.repo.config_files | join(", ") if kit.repo.config_files else "none detected" }}
+
+## Reproduction Strategy
+
+Run only commands explicitly listed in this kit. When paper symbols and code variable names do not align, preserve the ambiguity in the report instead of inventing a mapping.
+
+## Experiments
+
+{% for exp in kit.experiments %}
+### Experiment: {{ exp.id }}
+
+- Paper target: {{ exp.paper_result_id }}
+- Status: {{ exp.status }}
+- Implementation status: {{ exp.implementation_status }}
+- Confidence: {{ exp.confidence }}
+- Expected metric: {{ exp.expected.metric }}
+- Expected value: {{ exp.expected.value }}
+- Setup command: {{ exp.setup.command or "missing" }}
+- Data command: {{ exp.data.command or "missing" }}
+- Smoke command: {{ exp.smoke.command or "missing" }}
+- Run command: {{ exp.run.command or "missing" }}
+- Evaluation command: {{ exp.evaluate.command or "missing" }}
+- Unmatched paper symbols: {{ exp.unmatched_paper_symbols | join(", ") if exp.unmatched_paper_symbols else "none" }}
+- Risks: {{ exp.risks | join("; ") if exp.risks else "none recorded" }}
+
+{% endfor %}
+## Recommended Execution Order
+
+1. inspect
+2. setup
+3. smoke
+4. prepare-data
+5. run one experiment
+6. evaluate the experiment
+7. collect
+8. report
+
+## Blocking Issues
+
+{% for item in kit.missing_info %}
+- {{ item }}
+{% else %}
+- No structural blockers detected. Reproduction uncertainty may still exist.
+{% endfor %}
+
+## Reporting Protocol
+
+Report every command, mapping ambiguity, missing variable correspondence, partial implementation note, log path, artifact path, and failure mode.

@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+
+ROOT = Path(__file__).resolve().parents[1]
+KIT_PATH = ROOT / "reprokit.yaml"
+RUNS = ROOT / "runs"
+
+
+def load_kit():
+    if yaml is None:
+        raise SystemExit("PyYAML is required to read reprokit.yaml")
+    return yaml.safe_load(KIT_PATH.read_text(encoding="utf-8"))
+
+
+def experiments(kit):
+    return kit.get("experiments", [])
+
+
+def find_experiment(kit, experiment_id):
+    for exp in experiments(kit):
+        if exp["id"] == experiment_id:
+            return exp
+    raise SystemExit(f"unknown experiment_id: {experiment_id}")
+
+
+def inspect(args):
+    kit = load_kit()
+    project = kit.get("project", {})
+    repo = kit.get("repo", {})
+    print(f"Project: {project.get('name')}")
+    print(f"Paper: {project.get('paper_path')}")
+    print(f"Repository: {project.get('repo_path') or project.get('repo_url')}")
+    print(f"Language: {repo.get('language')}")
+    print(f"Experiments: {len(experiments(kit))}")
+    print("Missing information:")
+    for item in kit.get("missing_info", []) or ["none recorded"]:
+        print(f"- {item}")
+
+
+def list_experiments(args):
+    kit = load_kit()
+    for exp in experiments(kit):
+        print(
+            f"{exp['id']}\tstatus={exp.get('status')}\tconfidence={exp.get('confidence')}\t"
+            f"implementation={exp.get('implementation_status')}"
+        )
+
+
+def status(args):
+    kit = load_kit()
+    state = kit.get("state", {}).get("experiments", {})
+    for exp in experiments(kit):
+        runtime = read_json(RUNS / exp["id"] / "status.json", default={})
+        print(f"{exp['id']}: planned={exp.get('status')} runtime={runtime.get('status', state.get(exp['id'], {}).get('status', 'not_started'))}")
+
+
+def setup(args):
+    kit = load_kit()
+    command = (kit.get("repo", {}).get("environment", {}).get("install_commands") or [None])[0]
+    if not command:
+        raise SystemExit("setup command missing; mark setup as blocked")
+    run_command("setup", "setup", command)
+
+
+def smoke(args):
+    kit = load_kit()
+    for exp in experiments(kit):
+        command = exp.get("smoke", {}).get("command")
+        if command:
+            run_command(exp["id"], "smoke", command)
+        else:
+            mark_status(exp["id"], "blocked", "smoke command missing")
+
+
+def prepare_data(args):
+    kit = load_kit()
+    for exp in experiments(kit):
+        command = exp.get("data", {}).get("command")
+        if command:
+            run_command(exp["id"], "data", command)
+        else:
+            mark_status(exp["id"], "blocked", "data preparation command missing")
+
+
+def run(args):
+    kit = load_kit()
+    exp = find_experiment(kit, args.experiment_id)
+    if exp.get("implementation_status") in {"missing", "partial_candidate"} and not args.allow_partial:
+        raise SystemExit(
+            "experiment is not marked as a complete implementation candidate; rerun with --allow-partial "
+            "only if you explicitly accept this limitation"
+        )
+    command = exp.get("run", {}).get("command")
+    if not command:
+        mark_status(exp["id"], "blocked", "run command missing")
+        raise SystemExit("run command missing")
+    run_command(exp["id"], "run", command)
+
+
+def evaluate(args):
+    kit = load_kit()
+    exp = find_experiment(kit, args.experiment_id)
+    command = exp.get("evaluate", {}).get("command")
+    if not command:
+        mark_status(exp["id"], "blocked", "evaluation command missing")
+        raise SystemExit("evaluation command missing")
+    run_command(exp["id"], "evaluate", command)
+
+
+def collect(args):
+    RUNS.mkdir(exist_ok=True)
+    payload = {
+        "timestamp": now(),
+        "platform": platform.platform(),
+        "python": sys.version,
+        "cwd": os.getcwd(),
+    }
+    write_json(RUNS / "metadata.json", payload)
+    print(RUNS / "metadata.json")
+
+
+def report(args):
+    kit = load_kit()
+    lines = [
+        "# Reproducibility Report",
+        "",
+        "## Summary",
+        "",
+        f"- Project: {kit.get('project', {}).get('name')}",
+        f"- Paper: {kit.get('paper', {}).get('title')}",
+        "- Reproduction status: generated report from available run metadata",
+        "- Reproducibility level: Level 1 - Mapped",
+        "",
+        "## Experiments",
+        "",
+    ]
+    for exp in experiments(kit):
+        runtime = read_json(RUNS / exp["id"] / "status.json", default={})
+        lines.extend(
+            [
+                f"### {exp['id']}",
+                "",
+                f"- Planned status: {exp.get('status')}",
+                f"- Runtime status: {runtime.get('status', 'not_started')}",
+                f"- Implementation status: {exp.get('implementation_status')}",
+                f"- Confidence: {exp.get('confidence')}",
+                f"- Run command: `{exp.get('run', {}).get('command') or 'missing'}`",
+                f"- Evaluate command: `{exp.get('evaluate', {}).get('command') or 'missing'}`",
+                f"- Unmatched paper symbols: {', '.join(exp.get('unmatched_paper_symbols') or []) or 'none'}",
+                "",
+                "Symbol mappings:",
+                "",
+            ]
+        )
+        mappings = exp.get("symbol_mappings") or {}
+        if mappings:
+            for paper_symbol, code_symbol in mappings.items():
+                lines.append(f"- `{paper_symbol}` -> `{code_symbol or 'unmatched'}`")
+        else:
+            lines.append("- none detected")
+        lines.extend(["", "Risks:", ""])
+        for risk in exp.get("risks") or ["none recorded"]:
+            lines.append(f"- {risk}")
+        lines.append("")
+    lines.extend(["## Missing Information", ""])
+    for item in kit.get("missing_info") or ["none recorded"]:
+        lines.append(f"- {item}")
+    path = ROOT / "reproducibility_report.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(path)
+
+
+def run_command(experiment_id, phase, command):
+    kit = load_kit()
+    repo_path = kit.get("project", {}).get("repo_path")
+    cwd = Path(repo_path).resolve() if repo_path and Path(repo_path).exists() else ROOT.parent
+    out_dir = RUNS / experiment_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log_path = out_dir / f"{phase}.log"
+    print(f"$ {command}")
+    with log_path.open("w", encoding="utf-8") as log:
+        log.write(f"$ {command}\n")
+        log.write(f"cwd={cwd}\n")
+        proc = subprocess.run(command, shell=True, cwd=cwd, text=True, stdout=log, stderr=subprocess.STDOUT)
+    mark_status(experiment_id, "failed" if proc.returncode else phase + "_completed", None, proc.returncode)
+    if proc.returncode:
+        raise SystemExit(proc.returncode)
+
+
+def mark_status(experiment_id, status, reason=None, returncode=None):
+    payload = {"status": status, "reason": reason, "returncode": returncode, "updated": now()}
+    write_json(RUNS / experiment_id / "status.json", payload)
+
+
+def read_json(path, default):
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("inspect").set_defaults(func=inspect)
+    sub.add_parser("list").set_defaults(func=list_experiments)
+    sub.add_parser("status").set_defaults(func=status)
+    sub.add_parser("setup").set_defaults(func=setup)
+    sub.add_parser("smoke").set_defaults(func=smoke)
+    sub.add_parser("prepare-data").set_defaults(func=prepare_data)
+    run_p = sub.add_parser("run")
+    run_p.add_argument("experiment_id")
+    run_p.add_argument("--allow-partial", action="store_true")
+    run_p.set_defaults(func=run)
+    eval_p = sub.add_parser("evaluate")
+    eval_p.add_argument("experiment_id")
+    eval_p.set_defaults(func=evaluate)
+    sub.add_parser("collect").set_defaults(func=collect)
+    sub.add_parser("report").set_defaults(func=report)
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

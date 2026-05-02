@@ -1,0 +1,42 @@
+---
+name: reproduce-{{ kit.project.name }}
+description: Use this skill to run, evaluate, and report reproducibility experiments for {{ kit.project.name }} using the generated PaperHarness kit.
+---
+# Reproduce {{ kit.project.name }}
+
+Use this skill when asked to reproduce, validate, inspect, debug, or report experiments from this paper repository.
+
+## Source of Truth
+
+Always read `reprokit.yaml` before running commands.
+
+PaperHarness does not reproduce papers. PaperHarness generates the harness that lets agents reproduce papers responsibly.
+
+Do not guess missing datasets, checkpoints, hyperparameters, hardware requirements, or mappings between paper symbols and code variable names. If a paper symbol does not map cleanly to a code variable, report the ambiguity and continue only with commands that are explicitly present in the kit.
+
+## Required Workflow
+
+1. Inspect the kit: `python scripts/repro.py inspect`
+2. List experiments: `python scripts/repro.py list`
+3. Set up the environment: `python scripts/repro.py setup`
+4. Run smoke tests before full experiments: `python scripts/repro.py smoke`
+5. Prepare data if a data command is available: `python scripts/repro.py prepare-data`
+6. Run one experiment at a time: `python scripts/repro.py run <experiment_id>`
+7. Evaluate the experiment: `python scripts/repro.py evaluate <experiment_id>`
+8. Collect logs and metrics: `python scripts/repro.py collect`
+9. Write the reproducibility report: `python scripts/repro.py report`
+
+## Safety and Cost Rules
+
+- Do not run full training before smoke tests pass.
+- Do not launch expensive GPU jobs unless explicitly requested.
+- Do not rewrite repository code to force a paper experiment to exist.
+- Treat `implementation_status: partial_candidate` and `implementation_status: missing` as blocking diagnostics for full reproduction.
+- Preserve logs and report exact failures.
+
+## Mapping Rules
+
+- `symbol_mappings` are hypotheses, not proof.
+- `unmatched_paper_symbols` must be included in reports.
+- A code command can be runnable while still being only a partial implementation of the paper experiment.
+- Prefer partial reproducibility reports over silent failure.

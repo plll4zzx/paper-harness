@@ -1,0 +1,10 @@
+Minimal CIFAR Paper
+
+Abstract
+We propose TinyNet and achieve 94.2 accuracy on CIFAR-10. The paper uses symbols alpha, beta, lr, and lambda for regularization and optimization.
+
+Experiments
+Table 1 reports CIFAR-10 accuracy of 94.2 percent using TinyNet.
+
+Evaluation
+Accuracy is computed on the CIFAR-10 test split. The exact random seed and checkpoint URL are not provided.

@@ -1,0 +1,34 @@
+[project]
+name = "paperharness"
+version = "0.1.0"
+description = "Generate agent-operable reproduction kits from research papers and GitHub repositories."
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.0",
+  "pydantic>=2.0",
+  "pyyaml>=6.0",
+  "jinja2>=3.0",
+  "gitpython>=3.1",
+  "pymupdf>=1.24"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+  "mypy"
+]
+
+[project.scripts]
+paperharness = "paperharness.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+paperharness = ["templates/*.j2"]

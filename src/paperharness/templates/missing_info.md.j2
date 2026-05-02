@@ -1,0 +1,17 @@
+# Missing Information
+
+{% for item in kit.missing_info %}
+- {{ item }}
+{% else %}
+- No missing information was detected by the MVP heuristics.
+{% endfor %}
+
+## Symbol and Implementation Gaps
+
+{% for exp in kit.experiments %}
+### {{ exp.id }}
+
+- Implementation status: {{ exp.implementation_status }}
+- Unmatched paper symbols: {{ exp.unmatched_paper_symbols | join(", ") if exp.unmatched_paper_symbols else "none" }}
+- Risks: {{ exp.risks | join("; ") if exp.risks else "none recorded" }}
+{% endfor %}

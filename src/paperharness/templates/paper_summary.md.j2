@@ -1,0 +1,15 @@
+# Paper Summary
+
+- Title: {{ kit.paper.title }}
+- Abstract: {{ kit.paper.abstract or "not detected" }}
+- Datasets: {{ kit.paper.datasets | join(", ") if kit.paper.datasets else "not detected" }}
+- Metrics: {{ kit.paper.metrics | join(", ") if kit.paper.metrics else "not detected" }}
+- Symbols: {{ kit.paper.symbols | join(", ") if kit.paper.symbols else "not detected" }}
+
+## Candidate Results
+
+{% for result in kit.paper.results %}
+- {{ result.id }}: {{ result.description }}; dataset={{ result.dataset }}; metric={{ result.metric }}; expected={{ result.expected_value }}
+{% else %}
+- No candidate paper results detected.
+{% endfor %}
