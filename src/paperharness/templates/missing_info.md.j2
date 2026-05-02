@@ -1,9 +1,19 @@
 # Missing Information
 
+Blocking missing information belongs here. Non-blocking review items are listed separately below.
+
 {% for item in kit.missing_info %}
 - {{ item }}
 {% else %}
 - No missing information was detected by the MVP heuristics.
+{% endfor %}
+
+## Review Required
+
+{% for item in kit.review_required %}
+- {{ item.experiment_id }}: {{ item.issue_type }}{% if item.symbols %} ({{ item.symbols | join(", ") }}){% endif %}; severity={{ item.severity }}; {{ item.message }}
+{% else %}
+- No non-blocking review items detected.
 {% endfor %}
 
 ## Symbol and Implementation Gaps

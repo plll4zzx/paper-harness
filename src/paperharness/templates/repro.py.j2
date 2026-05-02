@@ -50,6 +50,14 @@ def inspect(args):
     print("Missing information:")
     for item in kit.get("missing_info", []) or ["none recorded"]:
         print(f"- {item}")
+    print("Review required:")
+    for item in kit.get("review_required", []) or ["none recorded"]:
+        if isinstance(item, dict):
+            symbols = ", ".join(item.get("symbols") or [])
+            detail = f" ({symbols})" if symbols else ""
+            print(f"- {item.get('severity', 'review')}: {item.get('issue_type')}{detail}: {item.get('message')}")
+        else:
+            print(f"- {item}")
 
 
 def list_experiments(args):
@@ -188,9 +196,73 @@ def report(args):
     lines.extend(["## Missing Information", ""])
     for item in kit.get("missing_info") or ["none recorded"]:
         lines.append(f"- {item}")
+    lines.extend(["", "## Review Required", ""])
+    for item in kit.get("review_required") or ["none recorded"]:
+        if isinstance(item, dict):
+            symbols = ", ".join(item.get("symbols") or [])
+            lines.append(
+                f"- {item.get('experiment_id')}: {item.get('issue_type')} ({symbols}); "
+                f"severity={item.get('severity')}; {item.get('message')}"
+            )
+        else:
+            lines.append(f"- {item}")
     path = ROOT / "reproducibility_report.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     print(path)
+
+
+def validate(args):
+    errors = []
+    warnings = []
+    ok = []
+    if not KIT_PATH.exists():
+        errors.append("reprokit.yaml missing")
+        return print_validation(ok, warnings, errors)
+    try:
+        kit = load_kit()
+    except Exception as exc:
+        errors.append(f"reprokit.yaml parse failed: {exc}")
+        return print_validation(ok, warnings, errors)
+    ok.append("reprokit.yaml parsed")
+    for field in ("schema_version", "project", "paper", "repo", "experiments"):
+        if field in kit:
+            ok.append(f"{field} found")
+        else:
+            errors.append(f"{field} missing")
+    for exp in experiments(kit):
+        exp_id = exp.get("id")
+        if exp_id:
+            ok.append(f"experiment id found: {exp_id}")
+        else:
+            errors.append("experiment missing id")
+        command_fields = ("setup", "data", "smoke", "run", "evaluate")
+        has_command = any((exp.get(field) or {}).get("command") for field in command_fields)
+        if exp.get("implementation_status") == "complete_candidate" and not has_command:
+            errors.append(f"{exp_id or '<unknown>'} complete_candidate has no command")
+        if exp.get("unmatched_paper_symbols"):
+            warnings.append(f"{exp_id} has unmatched paper symbols")
+    refs = ROOT / "references"
+    if refs.exists():
+        ok.append("references directory found")
+    else:
+        errors.append("references directory missing")
+    if (ROOT / "assets" / "report_template.md").exists():
+        ok.append("report template found")
+    else:
+        errors.append("report template missing")
+    print_validation(ok, warnings, errors)
+
+
+def print_validation(ok, warnings, errors):
+    for item in ok:
+        print(f"OK {item}")
+    for item in warnings:
+        print(f"WARN {item}")
+    for item in errors:
+        print(f"ERROR {item}")
+    print(f"Summary: {len(ok)} OK, {len(warnings)} WARN, {len(errors)} ERROR")
+    if errors:
+        raise SystemExit(1)
 
 
 def run_command(experiment_id, phase, command):
@@ -239,6 +311,7 @@ def main():
     sub.add_parser("setup").set_defaults(func=setup)
     sub.add_parser("smoke").set_defaults(func=smoke)
     sub.add_parser("prepare-data").set_defaults(func=prepare_data)
+    sub.add_parser("validate").set_defaults(func=validate)
     run_p = sub.add_parser("run")
     run_p.add_argument("experiment_id")
     run_p.add_argument("--allow-partial", action="store_true")

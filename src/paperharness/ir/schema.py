@@ -96,6 +96,14 @@ class EvidenceSpec(BaseModel):
     source_path: str | None = None
 
 
+class ReviewRequiredSpec(BaseModel):
+    experiment_id: str
+    issue_type: str
+    symbols: list[str] = Field(default_factory=list)
+    severity: str = "review"
+    message: str
+
+
 class ExperimentSpec(BaseModel):
     id: str
     paper_result_id: str | None = None
@@ -153,3 +161,4 @@ class ReproKit(BaseModel):
     reporting: ReportingSpec = Field(default_factory=ReportingSpec)
     state: dict[str, Any] = Field(default_factory=dict)
     missing_info: list[str] = Field(default_factory=list)
+    review_required: list[ReviewRequiredSpec] = Field(default_factory=list)

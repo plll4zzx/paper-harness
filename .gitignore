@@ -8,3 +8,4 @@ __pycache__/
 venv/
 paperharness-output/
 runs/
+.DS_Store
