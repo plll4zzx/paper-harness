@@ -2,7 +2,7 @@
 
 <div align="center">
     <h1 align="center">
-    <img src="pic/logo.png" alt="PaperHarness logo" width="30"/>&nbsp;
+    <img src="pic/logo.png" alt="PaperHarness logo" width="48"/>&nbsp;
     PaperHarness
     </h1>
 </div>
