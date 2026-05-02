@@ -1,12 +1,26 @@
-<h1>
-  <img src="pic/logo.png" alt="PaperHarness logo" width="42" align="left">
-  PaperHarness
-</h1>
+
+
+<p align="center">
+  <img src="pic/logo.png" width="128" alt="PaperHarness logo">
+</p>
+
+<h1 align="center">PaperHarness</h1>
 
 <img src="pic/hero.png" alt="PaperHarness hero image">
 
+<p align="center">
+  <strong>
+  Compile papers and repos into agent-operable reproduction kits.
+  </strong>
+</p>
+<p align="center">
+  <strong>
+  Build the missing harness between research papers, code repositories, and coding agents.
+  </strong>
+</p>
 
-**Build the missing harness between research papers, code repositories, and coding agents.**
+
+[![CI](https://github.com/plll4zzx/paper-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/plll4zzx/paper-harness/actions/workflows/ci.yml)
 
 PaperHarness turns a paper and its repository into an agent-ready reproduction kit.
 
