@@ -82,28 +82,42 @@ def setup(args):
     command = (kit.get("repo", {}).get("environment", {}).get("install_commands") or [None])[0]
     if not command:
         raise SystemExit("setup command missing; mark setup as blocked")
-    run_command("setup", "setup", command)
+    run_command("setup", "setup", command, dry_run=args.dry_run, yes=args.yes)
 
 
 def smoke(args):
     kit = load_kit()
+    failures = 0
     for exp in experiments(kit):
         command = exp.get("smoke", {}).get("command")
-        if command:
-            run_command(exp["id"], "smoke", command)
-        else:
+        if not command:
             mark_status(exp["id"], "blocked", "smoke command missing")
+            continue
+        try:
+            run_command(exp["id"], "smoke", command, dry_run=args.dry_run, yes=args.yes)
+        except SystemExit as exc:
+            failures += 1
+            print(f"  ! {exp['id']} smoke failed: exit={exc.code}; continuing with next experiment")
+    if failures:
+        raise SystemExit(1)
 
 
 def prepare_data(args):
     kit = load_kit()
+    failures = 0
     for exp in experiments(kit):
         command = exp.get("data", {}).get("command")
-        if command:
-            run_command(exp["id"], "data", command)
-        else:
+        if not command:
             print(f"warning: {exp['id']} has no data preparation command; status is data_unknown")
             mark_status(exp["id"], "data_unknown", "data preparation command missing")
+            continue
+        try:
+            run_command(exp["id"], "data", command, dry_run=args.dry_run, yes=args.yes)
+        except SystemExit as exc:
+            failures += 1
+            print(f"  ! {exp['id']} prepare-data failed: exit={exc.code}; continuing")
+    if failures:
+        raise SystemExit(1)
 
 
 def run(args):
@@ -114,11 +128,27 @@ def run(args):
             "experiment is not marked as a complete implementation candidate; rerun with --allow-partial "
             "only if you explicitly accept this limitation"
         )
+    unmet = _unmet_dependencies(exp)
+    if unmet and not args.ignore_deps:
+        raise SystemExit(
+            "unmet dependencies: " + ", ".join(unmet)
+            + ". Run them first (in order) or pass --ignore-deps to override."
+        )
     command = exp.get("run", {}).get("command")
     if not command:
         mark_status(exp["id"], "blocked", "run command missing")
         raise SystemExit("run command missing")
-    run_command(exp["id"], "run", command)
+    run_command(exp["id"], "run", command, dry_run=args.dry_run, yes=args.yes)
+
+
+def _unmet_dependencies(exp):
+    unmet = []
+    for dep_id in exp.get("depends_on") or []:
+        runtime = read_json(RUNS / dep_id / "status.json", default={})
+        status = runtime.get("status", "not_started")
+        if not (status == "run_completed" or status == "evaluate_completed"):
+            unmet.append(f"{dep_id} (status={status})")
+    return unmet
 
 
 def evaluate(args):
@@ -128,7 +158,7 @@ def evaluate(args):
     if not command:
         mark_status(exp["id"], "blocked", "evaluation command missing")
         raise SystemExit("evaluation command missing")
-    run_command(exp["id"], "evaluate", command)
+    run_command(exp["id"], "evaluate", command, dry_run=args.dry_run, yes=args.yes)
 
 
 def collect(args):
@@ -265,14 +295,49 @@ def print_validation(ok, warnings, errors):
         raise SystemExit(1)
 
 
-def run_command(experiment_id, phase, command):
+DANGEROUS_TOKENS = (
+    "rm -rf",
+    " :(){",
+    "mkfs",
+    "shutdown",
+    "reboot",
+    "dd if=",
+    "> /dev/sd",
+    "curl ",
+    "wget ",
+)
+
+
+def _allow_run(dry_run, yes):
+    return bool(dry_run) or bool(yes) or os.environ.get("REPRO_YES") == "1"
+
+
+def _command_is_dangerous(command):
+    return any(token in command for token in DANGEROUS_TOKENS)
+
+
+def run_command(experiment_id, phase, command, dry_run=False, yes=False):
     kit = load_kit()
     repo_path = kit.get("project", {}).get("repo_path")
     cwd = Path(repo_path).resolve() if repo_path and Path(repo_path).exists() else ROOT.parent
     out_dir = RUNS / experiment_id
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / f"{phase}.log"
-    print(f"$ {command}")
+    danger = _command_is_dangerous(command)
+    if dry_run:
+        print(f"[dry-run] $ {command}")
+    else:
+        print(f"$ {command}")
+    print(f"  cwd={cwd}")
+    if danger:
+        print("  ! command contains a destructive-looking token; refusing without --yes")
+    if dry_run or (danger and not yes):
+        with log_path.open("w", encoding="utf-8") as log:
+            log.write(f"# dry-run (executed=False)\n$ {command}\ncwd={cwd}\n")
+        mark_status(experiment_id, phase + "_dry_run", "dry-run or unsafe command refused", None)
+        if danger and not (dry_run or yes):
+            raise SystemExit(2)
+        return
     with log_path.open("w", encoding="utf-8") as log:
         log.write(f"$ {command}\n")
         log.write(f"cwd={cwd}\n")
@@ -302,22 +367,36 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _add_exec_flags(parser):
+    parser.add_argument("--dry-run", action="store_true", help="Log the command without executing it.")
+    parser.add_argument("--yes", action="store_true", help="Execute commands that look destructive (rm -rf, curl, etc).")
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("inspect").set_defaults(func=inspect)
     sub.add_parser("list").set_defaults(func=list_experiments)
     sub.add_parser("status").set_defaults(func=status)
-    sub.add_parser("setup").set_defaults(func=setup)
-    sub.add_parser("smoke").set_defaults(func=smoke)
-    sub.add_parser("prepare-data").set_defaults(func=prepare_data)
+    setup_p = sub.add_parser("setup")
+    _add_exec_flags(setup_p)
+    setup_p.set_defaults(func=setup)
+    smoke_p = sub.add_parser("smoke")
+    _add_exec_flags(smoke_p)
+    smoke_p.set_defaults(func=smoke)
+    data_p = sub.add_parser("prepare-data")
+    _add_exec_flags(data_p)
+    data_p.set_defaults(func=prepare_data)
     sub.add_parser("validate").set_defaults(func=validate)
     run_p = sub.add_parser("run")
     run_p.add_argument("experiment_id")
     run_p.add_argument("--allow-partial", action="store_true")
+    run_p.add_argument("--ignore-deps", action="store_true", help="Run even if depends_on experiments have not completed.")
+    _add_exec_flags(run_p)
     run_p.set_defaults(func=run)
     eval_p = sub.add_parser("evaluate")
     eval_p.add_argument("experiment_id")
+    _add_exec_flags(eval_p)
     eval_p.set_defaults(func=evaluate)
     sub.add_parser("collect").set_defaults(func=collect)
     sub.add_parser("report").set_defaults(func=report)

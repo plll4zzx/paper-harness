@@ -24,6 +24,14 @@ class CommandSpec(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list)
     timeout_seconds: int | None = None
     success_criteria: list[str] = Field(default_factory=list)
+    source: Literal["repo", "paper", "manual"] = "repo"
+    source_span: str | None = None
+
+
+class HardwareSpec(BaseModel):
+    gpu_required: bool = False
+    min_gpu_memory_gb: float | None = None
+    notes: str | None = None
 
 
 class PaperResult(BaseModel):
@@ -36,7 +44,10 @@ class PaperResult(BaseModel):
     tolerance: float | None = None
     unit: str | None = None
     symbols: list[str] = Field(default_factory=list)
+    config: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
     confidence: float = 0.0
+    source_span: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
 
 
 class PaperFacts(BaseModel):
@@ -48,6 +59,9 @@ class PaperFacts(BaseModel):
     metrics: list[str] = Field(default_factory=list)
     symbols: list[str] = Field(default_factory=list)
     results: list[PaperResult] = Field(default_factory=list)
+    hardware: HardwareSpec = Field(default_factory=HardwareSpec)
+    extraction_method: Literal["regex", "llm", "marker+regex"] = "regex"
+    source_format: Literal["pdf", "markdown", "text"] = "text"
 
 
 class RepoEnvironment(BaseModel):
@@ -78,11 +92,6 @@ class DatasetSpec(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
-class HardwareSpec(BaseModel):
-    gpu_required: bool = False
-    min_gpu_memory_gb: float | None = None
-
-
 class ExpectedSpec(BaseModel):
     metric: str | None = None
     value: float | str | None = None
@@ -111,6 +120,7 @@ class ExperimentSpec(BaseModel):
     status: ExperimentStatus = "unmapped"
     confidence: float = 0.0
     implementation_status: Literal["complete_candidate", "partial_candidate", "missing", "unknown"] = "unknown"
+    depends_on: list[str] = Field(default_factory=list)
     setup: CommandSpec = Field(default_factory=CommandSpec)
     data: CommandSpec = Field(default_factory=CommandSpec)
     smoke: CommandSpec = Field(default_factory=CommandSpec)
@@ -118,6 +128,7 @@ class ExperimentSpec(BaseModel):
     evaluate: CommandSpec = Field(default_factory=CommandSpec)
     hardware: HardwareSpec = Field(default_factory=HardwareSpec)
     expected: ExpectedSpec = Field(default_factory=ExpectedSpec)
+    config: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
     symbol_mappings: dict[str, str | None] = Field(default_factory=dict)
     unmatched_paper_symbols: list[str] = Field(default_factory=list)
     unmatched_code_symbols: list[str] = Field(default_factory=list)

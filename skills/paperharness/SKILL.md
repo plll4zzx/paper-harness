@@ -35,33 +35,48 @@ and generates:
    paperharness --help
    ```
 
-2. If working from the PaperHarness repository and the package is not installed, use:
+   From a source checkout the equivalent is `PYTHONPATH=src python -m paperharness.cli --help`.
+
+2. If the user gave a remote GitHub URL and remote cloning is not yet available in the installed version, clone the repository into a local working directory first.
+
+3. **Extract paper facts (preferred for PDFs).** Run the deterministic prep step:
 
    ```bash
-   PYTHONPATH=src python -m paperharness.cli --help
+   paperharness extract-text <paper-path> --out paper-extract
    ```
 
-3. If the user gave a remote GitHub URL and remote cloning is not yet available in the installed version, clone the repository into a local working directory first.
+   This produces in `paper-extract/`:
 
-4. Build the reproduce kit:
+   - `paper.md` — markdown via Marker if `paperharness[parse]` is installed, otherwise raw PyMuPDF text. For `.txt` / `.md` inputs the original text is copied through.
+   - `paper.sections.json` — GROBID-detected title/abstract/authors/sections, only if `--grobid-url` or `$GROBID_URL` is set.
+   - `extraction_prompt.md` — a prompt instructing **you** (the calling agent) to emit a strict JSON object describing the paper's facts.
+   - `extraction_schema.json` — the JSON schema the output must validate against.
+
+4. **Fill the extraction JSON yourself, using your own model.** Read `paper-extract/extraction_prompt.md`, then emit one JSON object conforming to `extraction_schema.json`. Save it as `paper-extract/extraction.json`. Rules:
+
+   - Every `results[*].source_span` must be a verbatim quote from `paper.md`.
+   - Use `confidence <= 0.4` for results you infer rather than read directly.
+   - Use `null` for fields the paper does not state; never invent values.
+   - Datasets and metrics must be named exactly as the paper writes them.
+
+5. **Build the reproduce kit with the extraction:**
 
    ```bash
-   paperharness build --paper <paper-path> --repo <repo-path>
+   paperharness build \
+     --paper <paper-path> \
+     --repo <repo-path> \
+     --extraction paper-extract/extraction.json
    ```
 
-   or from a source checkout:
+   If you skip the extraction step, `paperharness build` falls back to its regex extractor; the generated kit will mark `extraction_method: regex` and may report `No paper result candidates found.` as missing info. That is the correct behavior — uncertainty is preferable to fabrication.
 
-   ```bash
-   PYTHONPATH=src python -m paperharness.cli build --paper <paper-path> --repo <repo-path>
-   ```
-
-5. Validate the generated kit:
+6. Validate the generated kit:
 
    ```bash
    paperharness validate paperharness-output
    ```
 
-6. Inspect the generated paper/repo-specific skill:
+7. Inspect the generated paper/repo-specific skill:
 
    ```bash
    cd paperharness-output/skill
@@ -69,13 +84,13 @@ and generates:
    python scripts/repro.py list
    ```
 
-7. Run smoke tests before any full experiment:
+8. Run smoke tests before any full experiment:
 
    ```bash
    python scripts/repro.py smoke
    ```
 
-8. Do not run full training unless the user explicitly asks for it.
+9. Do not run full training unless the user explicitly asks for it.
 
 ## Critical Rules
 

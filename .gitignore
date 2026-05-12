@@ -9,3 +9,8 @@ venv/
 paperharness-output/
 runs/
 .DS_Store
+
+# PaperHarness work directories
+paperharness-extract/
+/tmp_*/
+

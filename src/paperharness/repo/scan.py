@@ -27,13 +27,29 @@ def scan_repo(repo_path: Path) -> RepoFacts:
         install_commands.append("pip install -e .")
 
     readme_commands = _readme_commands(files)
-    scripts = sorted([name for name in files if name.startswith("scripts/") and name.endswith((".sh", ".py"))])
-    configs = sorted([name for name in files if name.startswith("configs/") and name.endswith((".yaml", ".yml", ".json"))])
+    scripts = _script_files(files)
+    configs = _config_files(files)
     entrypoints = {
         "setup": install_commands[:],
-        "train": _entrypoint_commands(files, ["train.py", "main.py"], readme_commands),
-        "evaluate": _entrypoint_commands(files, ["eval.py", "evaluate.py"], readme_commands),
-        "test": _entrypoint_commands(files, ["test.py"], readme_commands),
+        "train": _entrypoint_commands(
+            files,
+            exact=["train.py", "main.py", "finetune.py", "fit.py", "launch.py", "run.py", "pretrain.py"],
+            patterns=["train_*.py", "finetune_*.py", "pretrain_*.py"],
+            readme_commands=readme_commands,
+        ),
+        "evaluate": _entrypoint_commands(
+            files,
+            exact=["eval.py", "evaluate.py", "inference.py", "predict.py", "test.py", "benchmark.py"],
+            patterns=["eval_*.py", "evaluate_*.py", "test_*.py", "benchmark_*.py", "attack_*.py"],
+            readme_commands=readme_commands,
+        ),
+        "data": _entrypoint_commands(
+            files,
+            exact=["prepare_data.py", "download.py"],
+            patterns=["collect_*.py", "prepare_*.py", "preprocess_*.py", "download_*.py"],
+            readme_commands=readme_commands,
+        ),
+        "test": _entrypoint_commands(files, exact=["pytest.ini", "tox.ini"], patterns=[], readme_commands=readme_commands),
         "scripts": [f"bash {s}" if s.endswith(".sh") else f"python {s}" for s in scripts],
     }
     command_candidates = sorted(set(readme_commands + install_commands + sum(entrypoints.values(), [])))
@@ -59,6 +75,36 @@ def scan_repo(repo_path: Path) -> RepoFacts:
     )
 
 
+SCRIPT_DIRS = ("scripts/", "tools/", "bin/", "experiments/", "examples/")
+CONFIG_DIRS = ("configs/", "config/", "conf/", "hydra/", "yaml/")
+CONFIG_EXTS = (".yaml", ".yml", ".json", ".toml")
+
+
+def _script_files(files: dict[str, Path]) -> list[str]:
+    return sorted(
+        name for name in files
+        if name.endswith((".sh", ".py"))
+        and (
+            any(name.startswith(d) for d in SCRIPT_DIRS)
+            or "/" not in name and name.endswith(".sh")
+        )
+    )
+
+
+def _config_files(files: dict[str, Path]) -> list[str]:
+    out: set[str] = set()
+    for name in files:
+        if not name.endswith(CONFIG_EXTS):
+            continue
+        if any(name.startswith(d) for d in CONFIG_DIRS):
+            out.add(name)
+            continue
+        # Top-level configs that are commonly experiment knobs.
+        if "/" not in name and name not in {"pyproject.toml", "package.json"}:
+            out.add(name)
+    return sorted(out)
+
+
 def _readme_commands(files: dict[str, Path]) -> list[str]:
     readme = next((files[n] for n in files if n.lower() == "readme.md"), None)
     if not readme:
@@ -72,34 +118,128 @@ def _readme_commands(files: dict[str, Path]) -> list[str]:
     return sorted(set(commands))
 
 
-def _entrypoint_commands(files: dict[str, Path], names: list[str], readme_commands: list[str]) -> list[str]:
-    found = []
-    for name in names:
-        if name in files:
-            found.append(f"python {name}")
+def _entrypoint_commands(
+    files: dict[str, Path],
+    exact: list[str],
+    patterns: list[str],
+    readme_commands: list[str],
+) -> list[str]:
+    import fnmatch
+
+    found: set[str] = set()
+    matched_names: set[str] = set()
+    for name in files:
+        basename = name.rsplit("/", 1)[-1]
+        if basename in exact:
+            found.add(f"python {name}")
+            matched_names.add(basename)
+            continue
+        for pattern in patterns:
+            if fnmatch.fnmatchcase(basename, pattern):
+                found.add(f"python {name}")
+                matched_names.add(basename)
+                break
     for command in readme_commands:
-        if any(name in command for name in names):
-            found.append(command)
-    return sorted(set(found))
+        if any(n in command for n in matched_names | set(exact)):
+            found.add(command)
+    return sorted(found)
+
+
+MAX_CODE_SYMBOLS = 400
+
+HYPERPARAM_NAME_HINTS = (
+    "lr", "learning_rate", "epoch", "batch", "weight_decay", "momentum",
+    "dropout", "temperature", "tau", "alpha", "beta", "gamma", "lambda",
+    "lam", "eps", "epsilon", "seed", "num_", "n_", "hidden", "dim",
+    "depth", "layers", "heads", "warmup", "decay", "optimizer", "scheduler",
+)
 
 
 def _code_symbols(repo_path: Path, files: dict[str, Path]) -> list[str]:
-    symbols: set[str] = set()
+    """Surface symbols *likely* relevant to paper-to-code variable mapping.
+
+    Sources:
+
+    1. CLI flags from argparse / click / typer (``add_argument("--lr")`` etc.) —
+       always kept, because they are explicitly declared as knobs.
+    2. Module-level constants whose names look like hyperparameters (filtered).
+    3. Keys from any YAML/JSON/TOML config in the repo (filtered).
+    4. Top-level keys of YAML/JSON config files — always kept.
+    """
+    cli_flags: set[str] = set()
+    other_constants: set[str] = set()
+    config_keys: set[str] = set()
     for name, path in files.items():
-        if not name.endswith(".py"):
+        if name.endswith(".py"):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+            except SyntaxError:
+                continue
+            cli_flags.update(_argparse_flags(tree))
+            other_constants.update(_module_level_constants(tree))
+        elif name.endswith((".yaml", ".yml")):
+            config_keys.update(_yaml_hyperparam_keys(path))
+
+    # CLI flags and config keys are always kept; other constants are filtered by hint.
+    kept = set(cli_flags) | set(config_keys) | {s for s in other_constants if _looks_like_hyperparam(s)}
+    return sorted(kept)[:MAX_CODE_SYMBOLS]
+
+
+def _argparse_flags(tree: ast.AST) -> set[str]:
+    flags: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
-        except SyntaxError:
+        func = node.func
+        name = (
+            func.attr if isinstance(func, ast.Attribute)
+            else func.id if isinstance(func, ast.Name)
+            else None
+        )
+        if name not in {"add_argument", "option", "argument"}:
             continue
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                symbols.add(node.name)
-            elif isinstance(node, ast.arg):
-                symbols.add(node.arg)
-            elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-                symbols.add(node.id)
-    return sorted(s for s in symbols if len(s) > 1)
+        for arg in node.args:
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                token = arg.value.lstrip("-").replace("-", "_")
+                if token:
+                    flags.add(token)
+                break
+    return flags
+
+
+def _module_level_constants(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    if not isinstance(tree, ast.Module):
+        return names
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+    return names
+
+
+def _yaml_hyperparam_keys(path: Path) -> set[str]:
+    keys: set[str] = set()
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return keys
+    for line in text.splitlines():
+        stripped = line.strip()
+        if ":" not in stripped or stripped.startswith("#"):
+            continue
+        key = stripped.split(":", 1)[0].strip().strip("'\"")
+        if key and key.replace("_", "").replace("-", "").isalnum():
+            keys.add(key.replace("-", "_"))
+    return keys
+
+
+def _looks_like_hyperparam(symbol: str) -> bool:
+    if len(symbol) < 2 or len(symbol) > 40:
+        return False
+    lowered = symbol.lower()
+    return any(hint in lowered for hint in HYPERPARAM_NAME_HINTS)
 
 
 def _framework_candidates(repo_path: Path, files: dict[str, Path]) -> list[str]:

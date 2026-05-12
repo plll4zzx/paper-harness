@@ -37,7 +37,7 @@ agent-ready reproduction kit
         |
         v
 Codex / OpenClaw / Claude Code / OpenCode
-````
+```
 
 A generated kit contains:
 
@@ -145,9 +145,7 @@ If a paper variable does not map cleanly to code, or if the released repository 
 
 ## Quickstart
 
-The current MVP supports local repository paths.
-
-If you have a GitHub URL, clone it first, then pass the local checkout path to `--repo`.
+`--repo` accepts either a local path, a GitHub `https://`/`git@` URL, or an `owner/repo` shorthand. URLs are shallow-cloned automatically.
 
 ```bash
 git clone https://github.com/plll4zzx/paper-harness.git

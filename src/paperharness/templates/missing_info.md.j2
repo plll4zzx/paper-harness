@@ -16,7 +16,7 @@ Blocking missing information belongs here. Non-blocking review items are listed 
 - No non-blocking review items detected.
 {% endfor %}
 
-## Symbol and Implementation Gaps
+## Per-experiment blockers
 
 {% for exp in kit.experiments %}
 ### {{ exp.id }}
@@ -24,4 +24,10 @@ Blocking missing information belongs here. Non-blocking review items are listed 
 - Implementation status: {{ exp.implementation_status }}
 - Unmatched paper symbols: {{ exp.unmatched_paper_symbols | join(", ") if exp.unmatched_paper_symbols else "none" }}
 - Risks: {{ exp.risks | join("; ") if exp.risks else "none recorded" }}
+- Missing pieces:
+{% for item in missing_per_experiment.get(exp.id, []) %}
+  - {{ item }}
+{% else %}
+  - none recorded
+{% endfor %}
 {% endfor %}

@@ -30,23 +30,29 @@ def build_experiments(paper: PaperFacts, repo: RepoFacts) -> tuple[list[Experime
         if not run_command:
             risks.append("No run command found for this paper result.")
             missing.append(f"No run command found for {result.id}.")
-        if result.dataset and not any(_norm(result.dataset) in _norm(c) for c in repo.command_candidates + repo.config_files):
+        if result.dataset and not any(
+            _name_appears_in(result.dataset, c) for c in repo.command_candidates + repo.config_files
+        ):
             risks.append(f"Dataset {result.dataset} not found in commands or config paths.")
             missing.append(f"Dataset mapping missing for {result.dataset}.")
+        exp_id = f"{result.id}_{_slug(result.dataset or 'unknown')}"
         experiments.append(
             ExperimentSpec(
-                id=f"{result.id}_{_slug(result.dataset or 'unknown')}",
+                id=exp_id,
                 paper_result_id=result.id,
                 title=f"Reproduce {result.label}",
                 status=status,
                 confidence=round(score, 2),
                 implementation_status=implementation_status,
+                depends_on=[f"{dep}_{_slug(result.dataset or 'unknown')}" for dep in result.depends_on],
                 setup=CommandSpec(command=setup_command),
                 data=CommandSpec(command=None, success_criteria=["dataset is available or issue is documented"]),
                 smoke=CommandSpec(command=smoke_command, timeout_seconds=60, success_criteria=["command exits with code 0"]),
                 run=CommandSpec(command=run_command),
                 evaluate=CommandSpec(command=eval_command),
                 expected={"metric": result.metric, "value": result.expected_value, "tolerance": result.tolerance, "unit": result.unit},
+                hardware=paper.hardware.model_copy(),
+                config=dict(result.config),
                 symbol_mappings=symbol_mappings,
                 unmatched_paper_symbols=unmatched_paper,
                 unmatched_code_symbols=unmatched_code[:20],
@@ -63,7 +69,7 @@ def _score(dataset: str | None, metric: str | None, repo: RepoFacts) -> tuple[fl
     evidence: list[EvidenceSpec] = []
     risks: list[str] = []
     haystack = "\n".join(repo.command_candidates + repo.config_files + repo.readme_commands).lower()
-    if dataset and _norm(dataset) in _norm(haystack):
+    if dataset and _name_appears_in(dataset, haystack):
         score += 0.25
         evidence.append(
             EvidenceSpec(
@@ -111,10 +117,10 @@ def _score(dataset: str | None, metric: str | None, repo: RepoFacts) -> tuple[fl
 def _best_run_command(dataset: str | None, repo: RepoFacts) -> str | None:
     commands = repo.readme_commands + repo.entrypoints.get("train", [])
     if dataset:
-        hit = next((c for c in commands if _norm(dataset) in _norm(c)), None)
+        hit = next((c for c in commands if _name_appears_in(dataset, c)), None)
         if hit:
             return hit
-        config_hit = next((c for c in repo.config_files if _norm(dataset) in _norm(c)), None)
+        config_hit = next((c for c in repo.config_files if _name_appears_in(dataset, c)), None)
         if config_hit and repo.entrypoints.get("train"):
             return f"{repo.entrypoints['train'][0]} --config {config_hit}"
     return commands[0] if commands else None
@@ -131,22 +137,69 @@ def _smoke_command(run_command: str | None, repo: RepoFacts) -> str | None:
     return f"{train} --help" if train else None
 
 
-def _symbol_mapping(paper_symbols: list[str], code_symbols: list[str]) -> tuple[dict[str, str | None], list[str], list[str]]:
+SYMBOL_ALIASES: dict[str, tuple[str, ...]] = {
+    "alpha": ("alpha", "a"),
+    "beta": ("beta", "b"),
+    "gamma": ("gamma",),
+    "lambda": ("lambda", "lam", "lmbda", "weight_decay", "wd"),
+    "lr": ("lr", "learning_rate"),
+    "epochs": ("epochs", "num_epochs", "n_epochs"),
+    "batch_size": ("batch_size", "bs", "batchsize"),
+    "tau": ("tau", "temperature", "temp"),
+    "epsilon": ("epsilon", "eps"),
+    "momentum": ("momentum",),
+    "dropout": ("dropout", "drop_rate"),
+}
+
+# Short tokens that would produce too many spurious substring matches.
+SHORT_TOKEN_BLOCKLIST = {"a", "b", "c", "x", "y", "z", "i", "j", "k", "n", "m", "lr", "wd", "bs", "eps"}
+
+
+def _symbol_mapping(
+    paper_symbols: list[str], code_symbols: list[str]
+) -> tuple[dict[str, str | None], list[str], list[str]]:
     mappings: dict[str, str | None] = {}
     unused_code = set(code_symbols)
+    code_norm = {c: _norm(c) for c in code_symbols}
     for symbol in paper_symbols:
         norm = _norm(symbol)
-        exact = next((c for c in code_symbols if _norm(c) == norm), None)
-        fuzzy = exact or next((c for c in code_symbols if norm and (norm in _norm(c) or _norm(c) in norm)), None)
-        mappings[symbol] = fuzzy
-        if fuzzy in unused_code:
-            unused_code.remove(fuzzy)
-    unmatched_paper = [s for s, mapped in mappings.items() if mapped is None]
+        candidates = SYMBOL_ALIASES.get(norm, (norm,))
+        mapped: str | None = None
+        for cand in candidates:
+            cand_norm = _norm(cand)
+            mapped = next((c for c, n in code_norm.items() if n == cand_norm), None)
+            if mapped:
+                break
+        if mapped is None and norm and norm not in SHORT_TOKEN_BLOCKLIST and len(norm) >= 4:
+            mapped = next(
+                (c for c, n in code_norm.items() if n.startswith(norm) or n.endswith("_" + norm)),
+                None,
+            )
+        mappings[symbol] = mapped
+        if mapped in unused_code:
+            unused_code.remove(mapped)
+    unmatched_paper = [s for s, m in mappings.items() if m is None]
     return mappings, unmatched_paper, sorted(unused_code)
 
 
 def _norm(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _name_tokens(value: str) -> list[str]:
+    """Split a free-form name like 'C4 (RealNewsLike subset)' into matchable tokens."""
+    parts = re.split(r"[^A-Za-z0-9]+", value)
+    return [p.lower() for p in parts if p and len(p) >= 2 and p.lower() not in {"the", "and", "for", "with", "set", "subset"}]
+
+
+def _name_appears_in(name: str, haystack: str) -> bool:
+    haystack_norm = _norm(haystack)
+    if _norm(name) in haystack_norm:
+        return True
+    tokens = _name_tokens(name)
+    if not tokens:
+        return False
+    return all(_norm(tok) in haystack_norm for tok in tokens)
 
 
 def _implementation_status(run_command: str | None, eval_command: str | None, score: float) -> str:
